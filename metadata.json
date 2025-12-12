@@ -1,0 +1,5 @@
+{
+  "name": "GlycoAtlas TCGA",
+  "description": "A comprehensive web platform for analyzing Glycosylated RNA (GlycoRNA) expression profiles and clinical survival correlations across TCGA tumor datasets.",
+  "requestFramePermissions": []
+}
