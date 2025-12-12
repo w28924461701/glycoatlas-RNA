@@ -1,11 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { GlycoRnaExpression, SurvivalAnalysisResult, RnaCategory } from "../types";
-
-// NOTE: In a real PHP application, this service would make fetch() calls to your PHP backend (e.g., /api/expression.php).
-// Since this is a pure frontend demo, we use Gemini to simulate the complex biological database and statistical analysis.
+import { GlycoRnaExpression, ComprehensiveAnalysisResult, RnaCategory } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const modelName = 'gemini-2.5-flash';
 
 export const fetchGlycoExpressionData = async (
@@ -14,32 +10,19 @@ export const fetchGlycoExpressionData = async (
 ): Promise<GlycoRnaExpression[]> => {
   try {
     const prompt = `
-      Act as the backend for a GlycoRNA research platform integrating data from TCGA and **GlycoRNA DB (http://www.glycornadb.com)**.
+      Act as a specialized bioinformatics database for Glycosylated RNAs (GlycoRNA).
       The user is querying for '${rnaCategory}' in the TCGA tumor type '${tumorCode}'.
 
-      Generate a realistic dataset of 10 specific RNA transcripts.
+      Generate a realistic dataset of 10 specific RNA transcripts that are KNOWN or HIGHLY PREDICTED to be GlycoRNAs.
       
-      CRITICAL SELECTION CRITERIA:
-      1. **Source:** The RNA candidates MUST be present in GlycoRNA DB (human). 
-      2. **Targets:** Prioritize high-confidence GlycoRNAs such as:
-         - Y RNAs: RNY1, RNY3, RNY4, RNY5
-         - Small Nuclear RNAs: U1, U2, U4, U5, U12 snRNA
-         - tRNAs: tRNA-Gly-GCC, tRNA-Val-CAC, tRNA-Glu-CTC
-         - snoRNAs: SNORD3A, SNORD118
-      3. **Context:** Ensure the gene symbol matches the requested category '${rnaCategory}'.
-
       For each entry provide:
-      - geneId (e.g., ENSG...)
-      - symbol (Must be a specific GlycoRNA candidate)
-      - tumorExpression (Log2 CPM, approx range 2-15)
-      - normalExpression (Log2 CPM, approx range 2-15)
-      - foldChange (calculate roughly 2^(tumor - normal))
-      - pValue (statistical significance, range 0 to 1, focus on <0.05)
-      - fdr (False Discovery Rate)
-      - evidence (Reference 'GlycoRNA DB' and specific cell lines if applicable, e.g., "GlycoRNA DB (HeLa), Ac4ManNAz+")
-      - localization (e.g., "Cell Surface", "Membrane Fraction")
+      - geneId, symbol, category
+      - tumorExpression, normalExpression (Log2 CPM)
+      - foldChange, pValue, fdr
+      - evidence (brief mechanism)
+      - localization
       
-      Return ONLY the JSON array.
+      Return ONLY JSON array.
     `;
 
     const response = await ai.models.generateContent({
@@ -70,7 +53,6 @@ export const fetchGlycoExpressionData = async (
     });
 
     const data = JSON.parse(response.text || "[]");
-    // Force the category to match the requested one (schema validation is loose on enums)
     return data.map((item: any) => ({ ...item, category: rnaCategory }));
 
   } catch (error) {
@@ -79,20 +61,24 @@ export const fetchGlycoExpressionData = async (
   }
 };
 
-export const fetchSurvivalAnalysis = async (
+export const fetchComprehensiveAnalysis = async (
   symbol: string,
   tumorCode: string
-): Promise<SurvivalAnalysisResult> => {
+): Promise<ComprehensiveAnalysisResult> => {
   try {
     const prompt = `
-      Perform a simulated Kaplan-Meier survival analysis for the GlycoRNA '${symbol}' in TCGA-${tumorCode}.
-      Assume the data is split into High Expression vs Low Expression groups.
+      Perform a comprehensive multi-omics analysis for the GlycoRNA '${symbol}' in TCGA-${tumorCode}.
       
-      Generate:
-      1. Statistical stats (Log-rank P-value, Hazard Ratio).
-      2. A brief biological interpretation (1 sentence) of whether this GlycoRNA is a risk factor or protective.
-      3. A series of data points for a stepped survival curve (time in months 0-120, probability 1.0 down to 0).
+      Generate a JSON object containing:
       
+      1. **survival**: Simulated Kaplan-Meier data (time, probability, group) and 15 simulated patient samples with TCGA barcodes.
+         - CRITICAL: The 'group' field in 'data' MUST be exactly "High Expression" or "Low Expression".
+      2. **clinical**: Analyze expression differences by 'Pathologic Stage' (Stage I, II, III, IV) and 'Gender'. Provide avg expression per group and p-value.
+      3. **enrichment**: Top 5 GO terms (BP/CC/MF) and KEGG pathways correlated with this gene.
+      4. **immune**: Correlation (Spearman rho) with 6 key immune cells (e.g., CD8+ T, Macrophages, B cells).
+      5. **drugs**: Top 5 drugs where gene expression correlates with sensitivity (IC50).
+      
+      Ensure biological plausibility for a GlycoRNA (e.g., surface interaction pathways, immune evasion).
       Return ONLY JSON.
     `;
 
@@ -106,18 +92,81 @@ export const fetchSurvivalAnalysis = async (
           properties: {
             geneSymbol: { type: Type.STRING },
             tumorType: { type: Type.STRING },
-            pValLogRank: { type: Type.NUMBER },
-            hazardRatio: { type: Type.NUMBER },
-            interpretation: { type: Type.STRING },
-            data: {
+            survival: {
+              type: Type.OBJECT,
+              properties: {
+                pValLogRank: { type: Type.NUMBER },
+                hazardRatio: { type: Type.NUMBER },
+                interpretation: { type: Type.STRING },
+                data: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: { 
+                      time: { type: Type.NUMBER }, 
+                      survivalProb: { type: Type.NUMBER }, 
+                      group: { type: Type.STRING, enum: ["High Expression", "Low Expression"] } 
+                    }
+                  }
+                },
+                samples: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      sampleId: { type: Type.STRING },
+                      expressionLevel: { type: Type.NUMBER },
+                      group: { type: Type.STRING },
+                      survivalMonths: { type: Type.NUMBER },
+                      status: { type: Type.STRING }
+                    }
+                  }
+                }
+              }
+            },
+            clinical: {
               type: Type.ARRAY,
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  time: { type: Type.NUMBER },
-                  survivalProb: { type: Type.NUMBER },
-                  group: { type: Type.STRING }, // "High Expression" or "Low Expression"
+                  featureName: { type: Type.STRING },
+                  pValue: { type: Type.NUMBER },
+                  groups: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: { name: { type: Type.STRING }, averageExpression: { type: Type.NUMBER }, count: { type: Type.NUMBER } }
+                    }
+                  }
                 }
+              }
+            },
+            enrichment: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  term: { type: Type.STRING },
+                  category: { type: Type.STRING },
+                  pValue: { type: Type.NUMBER },
+                  count: { type: Type.NUMBER },
+                  geneRatio: { type: Type.NUMBER }
+                }
+              }
+            },
+            immune: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: { cellType: { type: Type.STRING }, correlation: { type: Type.NUMBER }, pValue: { type: Type.NUMBER } }
+              }
+            },
+            drugs: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: { drugName: { type: Type.STRING }, correlation: { type: Type.NUMBER }, mechanism: { type: Type.STRING }, pValue: { type: Type.NUMBER } }
               }
             }
           }
@@ -127,7 +176,7 @@ export const fetchSurvivalAnalysis = async (
 
     return JSON.parse(response.text || "{}");
   } catch (error) {
-    console.error("Error fetching survival analysis:", error);
-    throw new Error("Failed to perform survival analysis.");
+    console.error("Error fetching detailed analysis:", error);
+    throw new Error("Failed to perform comprehensive analysis.");
   }
 };
